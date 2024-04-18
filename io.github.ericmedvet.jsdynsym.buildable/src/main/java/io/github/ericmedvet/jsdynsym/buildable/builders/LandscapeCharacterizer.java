@@ -1,5 +1,27 @@
+/*-
+ * ========================LICENSE_START=================================
+ * jsdynsym-buildable
+ * %%
+ * Copyright (C) 2023 - 2024 Eric Medvet
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * =========================LICENSE_END==================================
+ */
 package io.github.ericmedvet.jsdynsym.buildable.builders;
 
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
+import com.beust.jcommander.ParameterException;
 import io.github.ericmedvet.jnb.core.NamedBuilder;
 import io.github.ericmedvet.jnb.datastructure.DoubleRange;
 import io.github.ericmedvet.jnb.datastructure.FormattedNamedFunction;
@@ -8,51 +30,57 @@ import io.github.ericmedvet.jsdynsym.control.SingleAgentTask;
 import io.github.ericmedvet.jsdynsym.control.navigation.NavigationEnvironment;
 import io.github.ericmedvet.jsdynsym.core.DynamicalSystem;
 import io.github.ericmedvet.jsdynsym.core.numerical.ann.MultiLayerPerceptron;
-
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class LandscapeCharacterizer {
-  record Pair(String environment, String builder) {
-  }
 
-  record Range(double min, double max) {
-  }
+  private static final Logger L = Logger.getLogger(LandscapeCharacterizer.class.getName());
 
-  // Start parameters settings
-  private static final String CSV_PATH = "/home/michelelsaliby/paper_002/50x50x60_2_navigationFitnessSamples.csv";
-  private static final long SEED = 0;
-  private static final int N_POINTS = 50;
-  private static final int N_NEIGHBORS = 50;
-  private static final int N_SAMPLES = 60;
-  private static final double SEGMENT_LENGTH = 2;
-  private static final Range GENOTYPE_BOUNDS = new Range(-3, 3);
+  //  static {
+  //    Locale.setDefault(Locale.ROOT);
+  //    try {
+  //      LogManager.getLogManager()
+  //
+  // .readConfiguration(LandscapeCharacterizer.class.getClassLoader().getResourceAsStream("logging.properties"));
+  //    } catch (IOException ex) {
+  //      // ignore
+  //    }
+  //  }
+  record Pair(String environment, String builder) {}
+
+  record Range(double min, double max) {}
+
+  private static final List<String> FITNESS_FUNCTIONS = List.of("ds.e.n.avgD()", "ds.e.n.minD()", "ds.e.n.finalD()");
   private static final List<Pair> PROBLEMS = List.of(
       // BARRIER
-      // Per grafico innerLayerRatio (1, 2, 3, 4, 5) con nOfSensors=7 e Barrier=C_BARRIER
+      // Plot: x_axis=innerLayerRatio(1, 2, 3, 4, 5) with fixed nOfSensors=7 and Barrier=C_BARRIER
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 1)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 2)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 4)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 5)"),
 
-      // Per grafico nOfSensors (3, 5, 7, 9, 11) con innerLayerRatio=3 e Barrier=C_BARRIER
+      // Plot: x_axis=nOfSensors(3, 5, 7, 9, 11) with fixed innerLayerRatio=3 and Barrier=C_BARRIER
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 3)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 5)", "ds.num.mlp(innerLayerRatio = 3)"),
       // new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 9)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 11)", "ds.num.mlp(innerLayerRatio = 3)"),
 
-      // Per grafico barrier (A_BARRIER, B_BARRIER, C_BARRIER, D_BARRIER, E_BARRIER) con innerLayerRatio=3 e
-      // nOfSensors=7
+      // Plot: x_axis=barrier(A_BARRIER, B_BARRIER, C_BARRIER, D_BARRIER, E_BARRIER) with fixed innerLayerRatio=3
+      // and nOfSensors=7
       new Pair("ds.e.navigation(arena = A_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = B_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       // new Pair("ds.e.navigation(arena = C_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
@@ -60,36 +88,80 @@ public class LandscapeCharacterizer {
       new Pair("ds.e.navigation(arena = E_BARRIER; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
 
       // MAZE
-      // Per grafico innerLayerRatio (1, 2, 3, 4, 5) con nOfSensors=7 e Barrier=C_MAZE
+      // Plot: x_axis=innerLayerRatio(1, 2, 3, 4, 5) with fixed nOfSensors=7 and Barrier=C_MAZE
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 1)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 2)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 4)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 5)"),
 
-      // Per grafico nOfSensors (3, 5, 7, 9, 11) con innerLayerRatio=3 e Barrier=C_MAZE
+      // Plot: x_axis=nOfSensors(3, 5, 7, 9, 11) with fixed innerLayerRatio=3 and Barrier=C_MAZE
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 3)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 5)", "ds.num.mlp(innerLayerRatio = 3)"),
       // new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 9)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 11)", "ds.num.mlp(innerLayerRatio = 3)"),
 
-      // Per grafico barrier (A_MAZE, B_MAZE, C_MAZE, D_MAZE, E_MAZE) con innerLayerRatio=3 e nOfSensors=7
+      // Plot: x_axis=barrier(A_MAZE, B_MAZE, C_MAZE, D_MAZE, E_MAZE) with fixed innerLayerRatio=3 and
+      // nOfSensors=7
       new Pair("ds.e.navigation(arena = A_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = B_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       // new Pair("ds.e.navigation(arena = C_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = D_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"),
       new Pair("ds.e.navigation(arena = E_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"));
-  private static final List<String> FITNESS_FUNCTIONS = List.of("ds.e.n.avgD()", "ds.e.n.minD()", "ds.e.n.finalD()");
-  // End parameters settings
 
   private static final NamedBuilder<Object> BUILDER = NamedBuilder.fromDiscovery();
+  private static final String DEFAULT_FORMAT_PATH = "LandscapeCharacterizer__s=%d_np=%d_nn=%d_ns=%d_gb=[%.1f-%.1f]__%s.csv";
+
+  public static class Configuration {
+
+    @Parameter(
+        names = {"--seed", "-s"},
+        description = "Seed for the random number generator.")
+    public long seed = 0;
+
+    @Parameter(
+        names = {"--nPoints", "-np"},
+        description = "Number of points in the landscape.")
+    public int nPoints = 50;
+
+    @Parameter(
+        names = {"--nNeighbors", "-nn"},
+        description = "Number of neighbors for each point.")
+    public int nNeighbors = 50;
+
+    @Parameter(
+        names = {"--nSamples", "-ns"},
+        description = "Number of samples for each segment.")
+    public int nSamples = 60;
+
+    @Parameter(
+        names = {"--segmentLength", "-sl"},
+        description = "Length of the segment for each sample.")
+    public double segmentLength = 2;
+
+    @Parameter(
+        names = {"--genotypeBounds", "-gb"},
+        description = "Bounds for the genotype components.")
+    public Range genotypeBounds = new Range(-3, 3);
+
+    @Parameter(
+        names = {"--resultsTarget", "-t"},
+        description = "File path where to store the results.")
+    public String resultsTarget = DEFAULT_FORMAT_PATH;
+
+    @Parameter(
+        names = {"--help", "-h"},
+        description = "Show this help.",
+        help = true)
+    public boolean help;
+  }
 
   @SuppressWarnings("unchecked")
   private static double[] getFitnessValues(Pair problem, double[] mlpWeights) {
     NavigationEnvironment environment = (NavigationEnvironment) BUILDER.build(problem.environment);
     MultiLayerPerceptron mlp = ((NumericalDynamicalSystems.Builder<MultiLayerPerceptron, ?>)
-        NamedBuilder.fromDiscovery().build(problem.builder))
+            NamedBuilder.fromDiscovery().build(problem.builder))
         .apply(environment.nOfOutputs(), environment.nOfInputs());
     SingleAgentTask<DynamicalSystem<double[], double[], ?>, double[], double[], NavigationEnvironment.State> task =
         SingleAgentTask.fromEnvironment(environment, new double[2], new DoubleRange(0, 60), 1 / 60d);
@@ -98,10 +170,10 @@ public class LandscapeCharacterizer {
         task.simulate(mlp);
     return FITNESS_FUNCTIONS.stream()
         .mapToDouble(s -> ((FormattedNamedFunction<
-            Simulation.Outcome<
-                SingleAgentTask.Step<double[], double[], NavigationEnvironment.State>>,
-            Double>)
-            BUILDER.build(s))
+                    Simulation.Outcome<
+                        SingleAgentTask.Step<double[], double[], NavigationEnvironment.State>>,
+                    Double>)
+                BUILDER.build(s))
             .apply(outcome))
         .toArray();
   }
@@ -109,35 +181,78 @@ public class LandscapeCharacterizer {
   @SuppressWarnings("unchecked")
   public static void main(String[] args) throws FileNotFoundException {
 
-    PrintStream ps = new PrintStream(CSV_PATH);
-    String header = "ENVIRONMENT,BUILDER,POINT_INDEX,NEIGHBOR_INDEX,SAMPLE_INDEX,SEGMENT_LENGTH,"
+    Configuration configuration = new Configuration();
+    JCommander jc = JCommander.newBuilder().addObject(configuration).build();
+    jc.setProgramName(LandscapeCharacterizer.class.getName());
+    try {
+      jc.parse(args);
+    } catch (ParameterException e) {
+      e.usage();
+      L.severe(String.format("Cannot read command line options: %s", e));
+      System.exit(-1);
+    } catch (RuntimeException e) {
+      L.severe(e.getClass().getSimpleName() + ": " + e.getMessage());
+      System.exit(-1);
+    }
+
+    // check help
+    if (configuration.help) {
+      jc.usage();
+      System.exit(0);
+    }
+
+    if (configuration.resultsTarget.equals(DEFAULT_FORMAT_PATH)) {
+      ZonedDateTime timestamp = ZonedDateTime.now(); // Use ZonedDateTime
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
+      configuration.resultsTarget = String.format(
+          DEFAULT_FORMAT_PATH,
+          configuration.seed,
+          configuration.nPoints,
+          configuration.nNeighbors,
+          configuration.nSamples,
+          configuration.genotypeBounds.min(),
+          configuration.genotypeBounds.max(),
+          timestamp.format(formatter));
+    }
+
+    PrintStream ps = new PrintStream(configuration.resultsTarget);
+    String header = "ENVIRONMENT,BUILDER,POINT_INDEX,NEIGHBOR_INDEX,SAMPLE_INDEX,SEGMENT_LENGTH,GENOTYPE_SIZE,"
         + String.join(",", FITNESS_FUNCTIONS);
     ps.println(header);
     ExecutorService executorService =
         Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1);
-    Random random = new Random(SEED);
+    Random random = new Random(configuration.seed);
 
     for (Pair problem : PROBLEMS) {
       NavigationEnvironment environment = (NavigationEnvironment) BUILDER.build(problem.environment);
       MultiLayerPerceptron mlp = ((NumericalDynamicalSystems.Builder<MultiLayerPerceptron, ?>)
-          NamedBuilder.fromDiscovery().build(problem.builder))
+              NamedBuilder.fromDiscovery().build(problem.builder))
           .apply(environment.nOfOutputs(), environment.nOfInputs());
       int genotypeLength = mlp.getParams().length;
-      for (int point = 0; point < N_POINTS; point++) {
+
+      for (int point = 0; point < configuration.nPoints; point++) {
         double[] centralGenotype = IntStream.range(0, genotypeLength)
-            .mapToDouble(i -> GENOTYPE_BOUNDS.min()
-                + random.nextDouble() * (GENOTYPE_BOUNDS.max() - GENOTYPE_BOUNDS.min()))
+            .mapToDouble(i -> configuration.genotypeBounds.min()
+                + random.nextDouble()
+                    * (configuration.genotypeBounds.max() - configuration.genotypeBounds.min()))
             .toArray();
 
-        // Calculate and store the centralGenotype fitness for the current point once and for all here
+        // Compute and store the centralGenotype fitness for the current point once and for all here
         int finalPoint = point;
         executorService.submit(() -> {
-          double[] centralGenotypefitnessValues = getFitnessValues(problem, centralGenotype);
-          for (int n = 0; n < N_NEIGHBORS; n++) {
+          double[] centralGenotypeFitnessValues = getFitnessValues(problem, centralGenotype);
+          for (int n = 0; n < configuration.nNeighbors; n++) {
             StringBuilder line = new StringBuilder();
-            line.append("%s,%s,%d,%d,%d,%.2e,"
-                .formatted(problem.environment, problem.builder, finalPoint, n, 0, SEGMENT_LENGTH));
-            line.append(Arrays.stream(centralGenotypefitnessValues)
+            line.append("%s,%s,%d,%d,%d,%.2e,%d,"
+                .formatted(
+                    problem.environment,
+                    problem.builder,
+                    finalPoint,
+                    n,
+                    0,
+                    configuration.segmentLength,
+                    genotypeLength));
+            line.append(Arrays.stream(centralGenotypeFitnessValues)
                 .mapToObj(value -> String.format("%.5e", value))
                 .collect(Collectors.joining(",")));
             ps.println(line);
@@ -146,38 +261,40 @@ public class LandscapeCharacterizer {
           }
         });
 
-        for (int neighbor = 0; neighbor < N_NEIGHBORS; neighbor++) {
+        for (int neighbor = 0; neighbor < configuration.nNeighbors; neighbor++) {
           double[] randomVector = IntStream.range(
                   0, genotypeLength) // Extracts component with a Gaussian distribution to have
               // uniformity on the sphere
-              .mapToDouble(i -> GENOTYPE_BOUNDS.min()
-                  + random.nextGaussian() * (GENOTYPE_BOUNDS.max() - GENOTYPE_BOUNDS.min()))
+              .mapToDouble(i -> configuration.genotypeBounds.min()
+                  + random.nextGaussian()
+                      * (configuration.genotypeBounds.max() - configuration.genotypeBounds.min()))
               .toArray();
           double randomVector_norm = Math.sqrt(Arrays.stream(randomVector)
               .boxed()
               .mapToDouble(element -> element * element)
               .sum());
           double[] neighborGenotype = IntStream.range(0, genotypeLength)
-              .mapToDouble(
-                  i -> (randomVector[i] / randomVector_norm) * SEGMENT_LENGTH + centralGenotype[i])
+              .mapToDouble(i -> (randomVector[i] / randomVector_norm) * configuration.segmentLength
+                  + centralGenotype[i])
               .toArray();
           double[] sampleStep = IntStream.range(0, genotypeLength)
-              .mapToDouble(i -> (neighborGenotype[i] - centralGenotype[i]) / (N_SAMPLES - 1))
+              .mapToDouble(i -> (neighborGenotype[i] - centralGenotype[i]) / (configuration.nSamples - 1))
               .toArray();
 
           int finalNeighbor = neighbor;
-          for (int sample = 1; sample < N_SAMPLES; sample++) {
+          for (int sample = 1; sample < configuration.nSamples; sample++) {
             int finalSample = sample;
             executorService.submit(() -> {
               StringBuilder line = new StringBuilder();
-              line.append("%s,%s,%d,%d,%d,%.2e,"
+              line.append("%s,%s,%d,%d,%d,%.2e,%d,"
                   .formatted(
                       problem.environment,
                       problem.builder,
                       finalPoint,
                       finalNeighbor,
                       finalSample,
-                      SEGMENT_LENGTH));
+                      configuration.segmentLength,
+                      genotypeLength));
               double[] sampleGenotype = Arrays.stream(sampleStep)
                   .boxed()
                   .mapToDouble(s -> s * finalSample)

@@ -23,6 +23,8 @@ module io.github.ericmedvet.jsdynsym.buildable {
   requires io.github.ericmedvet.jnb.core;
   requires io.github.ericmedvet.jnb.datastructure;
   requires io.github.ericmedvet.jviz.core;
+  requires jcommander;
+  requires java.logging;
 
   exports io.github.ericmedvet.jsdynsym.buildable.builders;
 
