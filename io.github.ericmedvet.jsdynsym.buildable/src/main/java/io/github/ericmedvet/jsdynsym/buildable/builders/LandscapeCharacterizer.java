@@ -111,7 +111,8 @@ public class LandscapeCharacterizer {
       new Pair("ds.e.navigation(arena = E_MAZE; nOfSensors = 7)", "ds.num.mlp(innerLayerRatio = 3)"));
 
   private static final NamedBuilder<Object> BUILDER = NamedBuilder.fromDiscovery();
-  private static final String DEFAULT_FORMAT_PATH = "LandscapeCharacterizer__s=%d_np=%d_nn=%d_ns=%d_gb=[%.1f-%.1f]__%s.csv";
+  private static final String DEFAULT_FORMAT_PATH =
+      "LandscapeCharacterizer__s=%d_np=%d_nn=%d_ns=%d_gb=[%.1f-%.1f]__%s.csv";
 
   public static class Configuration {
 
