@@ -241,13 +241,21 @@ public class LandscapeCharacterizer {
     long initialTime = System.currentTimeMillis();
     Runnable progressPrinterRunnable = () -> {
       System.out.printf("Simulations: %d/%d%n", counterSimulation.get(), totalSimulations);
-      System.out.printf(
-          "Remaining time estimate" + ": %.2f minutes%n",
-          (System.currentTimeMillis() - initialTime)
-              / 1000.0
-              / counterSimulation.get()
-              * (totalSimulations - counterSimulation.get())
-              / 60.0);
+      int totalMinutesRemaining = (int) Math.ceil((System.currentTimeMillis() - initialTime)
+          / 1000.0
+          / counterSimulation.get()
+          * (totalSimulations - counterSimulation.get())
+          / 60);
+      int hours = totalMinutesRemaining / 60;
+      int minutes = totalMinutesRemaining % 60;
+      int days = hours / 24;
+      if (days > 0) {
+        System.out.printf("Remaining time estimate: %4d d  %2d h  %2d min%n", days, hours % 24, minutes);
+      } else if (hours > 0) {
+        System.out.printf("Remaining time estimate: %2d h  %2d min%n", hours, minutes);
+      } else {
+        System.out.printf("Remaining time estimate: %2d min%n", minutes);
+      }
     };
     ScheduledExecutorService updatePrinterExecutor = Executors.newScheduledThreadPool(1);
     updatePrinterExecutor.scheduleAtFixedRate(
