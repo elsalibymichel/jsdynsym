@@ -31,33 +31,30 @@ import io.github.ericmedvet.jsdynsym.control.navigation.NavigationEnvironment;
 import io.github.ericmedvet.jsdynsym.core.DynamicalSystem;
 import io.github.ericmedvet.jsdynsym.core.numerical.ann.MultiLayerPerceptron;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 
 public class LandscapeCharacterizer {
 
   private static final Logger L = Logger.getLogger(LandscapeCharacterizer.class.getName());
 
-  //  static {
-  //    Locale.setDefault(Locale.ROOT);
-  //    try {
-  //      LogManager.getLogManager()
-  //
-  // .readConfiguration(LandscapeCharacterizer.class.getClassLoader().getResourceAsStream("logging.properties"));
-  //    } catch (IOException ex) {
-  //      // ignore
-  //    }
-  //  }
   record Pair(String environment, String builder) {}
 
   record Range(double min, double max) {}
@@ -124,17 +121,17 @@ public class LandscapeCharacterizer {
     @Parameter(
         names = {"--nPoints", "-np"},
         description = "Number of points in the landscape.")
-    public int nPoints = 50;
+    public int nPoints = 5; // 50
 
     @Parameter(
         names = {"--nNeighbors", "-nn"},
         description = "Number of neighbors for each point.")
-    public int nNeighbors = 50;
+    public int nNeighbors = 5; // 50
 
     @Parameter(
         names = {"--nSamples", "-ns"},
         description = "Number of samples for each segment.")
-    public int nSamples = 60;
+    public int nSamples = 5; // 60
 
     @Parameter(
         names = {"--segmentLength", "-sl"},
@@ -150,6 +147,11 @@ public class LandscapeCharacterizer {
         names = {"--resultsTarget", "-t"},
         description = "File path where to store the results.")
     public String resultsTarget = DEFAULT_FORMAT_PATH;
+
+    @Parameter(
+        names = {"--deltaUpdate", "-du"},
+        description = "Delta [sec] update for the progress printer.")
+    public int deltaUpdate = 10;
 
     @Parameter(
         names = {"--help", "-h"},
@@ -181,6 +183,8 @@ public class LandscapeCharacterizer {
 
   @SuppressWarnings("unchecked")
   public static void main(String[] args) throws FileNotFoundException {
+
+    Locale.setDefault(Locale.ROOT);
 
     Configuration configuration = new Configuration();
     JCommander jc = JCommander.newBuilder().addObject(configuration).build();
@@ -216,6 +220,39 @@ public class LandscapeCharacterizer {
           timestamp.format(formatter));
     }
 
+    try (CSVPrinter printer = new CSVPrinter(new FileWriter("csv.txt"), CSVFormat.EXCEL)) {
+      printer.printRecord(
+          "ENVIRONMENT",
+          "BUILDER",
+          "POINT_INDEX",
+          "NEIGHBOR_INDEX",
+          "SAMPLE_INDEX",
+          "SEGMENT_LENGTH",
+          "GENOTYPE_SIZE",
+          "FITNESS_FUNCTIONS");
+    } catch (IOException ex) {
+      System.out.printf("Cannot create CSVPrinter: %s%n", ex);
+      System.exit(0);
+    }
+
+    int totalSimulations =
+        PROBLEMS.size() * configuration.nPoints * configuration.nNeighbors * configuration.nSamples;
+    AtomicInteger counterSimulation = new AtomicInteger();
+    long initialTime = System.currentTimeMillis();
+    Runnable progressPrinterRunnable = () -> {
+      System.out.printf("Simulations: %d/%d%n", counterSimulation.get(), totalSimulations);
+      System.out.printf(
+          "Remaining time estimate" + ": %.2f minutes%n",
+          (System.currentTimeMillis() - initialTime)
+              / 1000.0
+              / counterSimulation.get()
+              * (totalSimulations - counterSimulation.get())
+              / 60.0);
+    };
+    ScheduledExecutorService updatePrinterExecutor = Executors.newScheduledThreadPool(1);
+    updatePrinterExecutor.scheduleAtFixedRate(
+        progressPrinterRunnable, 0, configuration.deltaUpdate, TimeUnit.SECONDS);
+
     PrintStream ps = new PrintStream(configuration.resultsTarget);
     String header = "ENVIRONMENT,BUILDER,POINT_INDEX,NEIGHBOR_INDEX,SAMPLE_INDEX,SEGMENT_LENGTH,GENOTYPE_SIZE,"
         + String.join(",", FITNESS_FUNCTIONS);
@@ -231,7 +268,7 @@ public class LandscapeCharacterizer {
           .apply(environment.nOfOutputs(), environment.nOfInputs());
       int genotypeLength = mlp.getParams().length;
 
-      for (int point = 0; point < configuration.nPoints; point++) {
+      for (int point = 0; point < configuration.nPoints; ++point) {
         double[] centralGenotype = IntStream.range(0, genotypeLength)
             .mapToDouble(i -> configuration.genotypeBounds.min()
                 + random.nextDouble()
@@ -242,27 +279,25 @@ public class LandscapeCharacterizer {
         int finalPoint = point;
         executorService.submit(() -> {
           double[] centralGenotypeFitnessValues = getFitnessValues(problem, centralGenotype);
-          for (int n = 0; n < configuration.nNeighbors; n++) {
-            StringBuilder line = new StringBuilder();
-            line.append("%s,%s,%d,%d,%d,%.2e,%d,"
-                .formatted(
-                    problem.environment,
-                    problem.builder,
-                    finalPoint,
-                    n,
-                    0,
-                    configuration.segmentLength,
-                    genotypeLength));
-            line.append(Arrays.stream(centralGenotypeFitnessValues)
-                .mapToObj(value -> String.format("%.5e", value))
-                .collect(Collectors.joining(",")));
+          for (int n = 0; n < configuration.nNeighbors; ++n) {
+            String line = "%s,%s,%d,%d,%d,%.2e,%d,"
+                    .formatted(
+                        problem.environment,
+                        problem.builder,
+                        finalPoint,
+                        n,
+                        0,
+                        configuration.segmentLength,
+                        genotypeLength)
+                + Arrays.stream(centralGenotypeFitnessValues)
+                    .mapToObj(value -> String.format("%.5e", value))
+                    .collect(Collectors.joining(","));
             ps.println(line);
-            System.out.println(header.replace(',', '\t'));
-            System.out.println(line.toString().replace(',', '\t'));
+            counterSimulation.getAndIncrement();
           }
         });
 
-        for (int neighbor = 0; neighbor < configuration.nNeighbors; neighbor++) {
+        for (int neighbor = 0; neighbor < configuration.nNeighbors; ++neighbor) {
           double[] randomVector = IntStream.range(
                   0, genotypeLength) // Extracts component with a Gaussian distribution to have
               // uniformity on the sphere
@@ -283,7 +318,7 @@ public class LandscapeCharacterizer {
               .toArray();
 
           int finalNeighbor = neighbor;
-          for (int sample = 1; sample < configuration.nSamples; sample++) {
+          for (int sample = 1; sample < configuration.nSamples; ++sample) {
             int finalSample = sample;
             executorService.submit(() -> {
               StringBuilder line = new StringBuilder();
@@ -305,6 +340,7 @@ public class LandscapeCharacterizer {
                   .mapToObj(value -> String.format("%.5e", value))
                   .collect(Collectors.joining(",")));
               ps.println(line);
+              counterSimulation.getAndIncrement();
             });
           }
         }
@@ -319,6 +355,7 @@ public class LandscapeCharacterizer {
         // ignore
       }
     }
+    updatePrinterExecutor.shutdown();
     System.out.println("Done");
     ps.close();
   }

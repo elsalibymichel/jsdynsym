@@ -25,6 +25,7 @@ module io.github.ericmedvet.jsdynsym.buildable {
   requires io.github.ericmedvet.jviz.core;
   requires jcommander;
   requires java.logging;
+  requires org.apache.commons.csv;
 
   exports io.github.ericmedvet.jsdynsym.buildable.builders;
 
