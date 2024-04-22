@@ -51,9 +51,9 @@ import java.util.stream.IntStream;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 
-public class LandscapeCharacterizer {
+public class LandscapeCharacterizerFirstVersion {
 
-  private static final Logger L = Logger.getLogger(LandscapeCharacterizer.class.getName());
+  private static final Logger L = Logger.getLogger(LandscapeCharacterizerFirstVersion.class.getName());
 
   record Pair(String environment, String builder) {}
 
@@ -109,42 +109,39 @@ public class LandscapeCharacterizer {
 
   private static final NamedBuilder<Object> BUILDER = NamedBuilder.fromDiscovery();
   private static final String DEFAULT_FORMAT_PATH =
-      "LandscapeCharacterizer__s=%d_cn=%d_nw=%.2f_sn=%d_rw=%.2f_gb=[%.1f-%.1f]__%s.csv";
+      "LandscapeCharacterizerFirstVersion__s=%d_np=%d_nn=%d_ns=%d_gb=[%.1f-%.1f]__%s.csv";
 
   public static class Configuration {
 
-    Random random = new Random();
-
     @Parameter(
         names = {"--seed", "-s"},
-        description = "Seed for the random number generator. If not specified, a random seed is used.")
-    public long seed = random.nextInt();
+        description = "Seed for the random number generator.")
+    public long seed = 0;
 
     @Parameter(
-        names = {"--centersNumber", "-cn"},
-        description = "Number of centers in the genotype space to consider.")
-    public int centersNumber = 30;
+        names = {"--nPoints", "-np"},
+        description = "Number of points in the genotype space to consider.")
+    public int nPoints = 5; // 50
 
     @Parameter(
-        names = {"--neighborsWeight", "-nw"},
-        description =
-            "This value and the genotype space dimension will determine the number of neighbors to consider for each center.")
-    public double neighborsWeight = 1; // 50
+        names = {"--nNeighbors", "-nn"},
+        description = "Number of neighbors to consider for each point.")
+    public int nNeighbors = 5; // 50
 
     @Parameter(
-        names = {"--resolutionWeight", "-rw"},
-        description = "This value and the genotype space dimension will determine the sampling resolution.")
-    public double resolutionWeight = 0.35;
+        names = {"--nSamples", "-ns"},
+        description = "Number of samples for each couple of point and neighbor.")
+    public int nSamples = 5; // 60
 
     @Parameter(
-        names = {"--samplesNumber", "-sn"},
-        description = "Number of samples to consider for each couple of center and neighbor.")
-    public int samplesNumber = 100; // 60
+        names = {"--segmentLength", "-sl"},
+        description = "Length of the segment.")
+    public double segmentLength = 2;
 
     @Parameter(
         names = {"--genotypeBounds", "-gb"},
         description = "Bounds for the genotype components.")
-    public List<Double> genotypeBoundsList = Arrays.asList(-1.0, 1.0);
+    public List<Double> genotypeBoundsList = Arrays.asList(-3.0, 3.0);
 
     @Parameter(
         names = {"--resultsTarget", "-t"},
@@ -196,10 +193,9 @@ public class LandscapeCharacterizer {
 
     Locale.setDefault(Locale.ROOT);
 
-    // Parse command line options
     Configuration configuration = new Configuration();
     JCommander jc = JCommander.newBuilder().addObject(configuration).build();
-    jc.setProgramName(LandscapeCharacterizer.class.getName());
+    jc.setProgramName(LandscapeCharacterizerFirstVersion.class.getName());
     try {
       jc.parse(args);
     } catch (ParameterException e) {
@@ -211,37 +207,33 @@ public class LandscapeCharacterizer {
       System.exit(-1);
     }
 
-    // Check help
+    // check help
     if (configuration.help) {
       jc.usage();
       System.exit(0);
     }
 
-    // Initialize the genotype bounds
     final Range genotypeBounds = getGenotypeBounds(configuration.genotypeBoundsList);
 
-    // Check if the resultsTarget is the default one and if so, update it with the experiment values
     if (configuration.resultsTarget.equals(DEFAULT_FORMAT_PATH)) {
       ZonedDateTime timestamp = ZonedDateTime.now(); // Use ZonedDateTime
       DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
       configuration.resultsTarget = String.format(
           DEFAULT_FORMAT_PATH,
           configuration.seed,
-          configuration.centersNumber,
-          configuration.neighborsWeight,
-          configuration.samplesNumber,
-          configuration.resolutionWeight,
+          configuration.nPoints,
+          configuration.nNeighbors,
+          configuration.nSamples,
           genotypeBounds.min(),
           genotypeBounds.max(),
           timestamp.format(formatter));
     }
 
-    // Create the CSV file
     try (CSVPrinter printer = new CSVPrinter(new FileWriter("csv.txt"), CSVFormat.EXCEL)) {
       printer.printRecord(
           "ENVIRONMENT",
           "BUILDER",
-          "CENTER_INDEX",
+          "POINT_INDEX",
           "NEIGHBOR_INDEX",
           "SAMPLE_INDEX",
           "SEGMENT_LENGTH",
@@ -252,29 +244,16 @@ public class LandscapeCharacterizer {
       System.exit(0);
     }
 
-    // Compute the total number of simulations
-    int totalSimulations = 0;
-    for (Pair problem : PROBLEMS) {
-      NavigationEnvironment environment = (NavigationEnvironment) BUILDER.build(problem.environment);
-      MultiLayerPerceptron mlp = ((NumericalDynamicalSystems.Builder<MultiLayerPerceptron, ?>)
-              NamedBuilder.fromDiscovery().build(problem.builder))
-          .apply(environment.nOfOutputs(), environment.nOfInputs());
-      int genotypeLength = mlp.getParams().length;
-      int neighborsNumber = (int) Math.ceil(configuration.neighborsWeight * genotypeLength);
-      totalSimulations =
-          totalSimulations + configuration.centersNumber * neighborsNumber * configuration.samplesNumber;
-    }
-    final int totalSimulationsFinal = totalSimulations;
-
-    // Setup the progress printer
+    int totalSimulations =
+        PROBLEMS.size() * configuration.nPoints * configuration.nNeighbors * configuration.nSamples;
     AtomicInteger counterSimulation = new AtomicInteger();
     long initialTime = System.currentTimeMillis();
     Runnable progressPrinterRunnable = () -> {
-      System.out.printf("Simulations: %d/%d%n", counterSimulation.get(), totalSimulationsFinal);
+      System.out.printf("Simulations: %d/%d%n", counterSimulation.get(), totalSimulations);
       int totalMinutesRemaining = (int) Math.ceil((System.currentTimeMillis() - initialTime)
           / 1000.0
           / counterSimulation.get()
-          * (totalSimulationsFinal - counterSimulation.get())
+          * (totalSimulations - counterSimulation.get())
           / 60);
       int hours = totalMinutesRemaining / 60;
       int minutes = totalMinutesRemaining % 60;
@@ -291,49 +270,40 @@ public class LandscapeCharacterizer {
     updatePrinterExecutor.scheduleAtFixedRate(
         progressPrinterRunnable, 0, configuration.deltaUpdate, TimeUnit.SECONDS);
 
-    // Setup the simulation executor and other variables
     PrintStream ps = new PrintStream(configuration.resultsTarget);
-    String header = "ENVIRONMENT,BUILDER,CENTER_INDEX,NEIGHBOR_INDEX,SAMPLE_INDEX,SEGMENT_LENGTH,GENOTYPE_SIZE,"
+    String header = "ENVIRONMENT,BUILDER,POINT_INDEX,NEIGHBOR_INDEX,SAMPLE_INDEX,SEGMENT_LENGTH,GENOTYPE_SIZE,"
         + String.join(",", FITNESS_FUNCTIONS);
     ps.println(header);
     ExecutorService executorService =
         Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1);
     Random random = new Random(configuration.seed);
 
-    // Start the simulations
     for (Pair problem : PROBLEMS) {
-
-      // Extract the environment and the builder
       NavigationEnvironment environment = (NavigationEnvironment) BUILDER.build(problem.environment);
       MultiLayerPerceptron mlp = ((NumericalDynamicalSystems.Builder<MultiLayerPerceptron, ?>)
               NamedBuilder.fromDiscovery().build(problem.builder))
           .apply(environment.nOfOutputs(), environment.nOfInputs());
       int genotypeLength = mlp.getParams().length;
 
-      // Compute the number of neighbors and the segment length
-      int neighborsNumber = (int) Math.ceil(configuration.neighborsWeight * genotypeLength);
-      double segmentLength = configuration.resolutionWeight * Math.sqrt(genotypeLength) * configuration.samplesNumber;
-
-      // For each center, compute the central genotype
-      for (int center = 0; center < configuration.centersNumber; ++center) {
+      for (int point = 0; point < configuration.nPoints; ++point) {
         double[] centralGenotype = IntStream.range(0, genotypeLength)
             .mapToDouble(i -> genotypeBounds.min()
                 + random.nextDouble() * (genotypeBounds.max() - genotypeBounds.min()))
             .toArray();
 
-        // Compute and store the current centralGenotype fitness for all neighbors once and for all
-        int finalCenter = center;
+        // Compute and store the centralGenotype fitness for the current point once and for all here
+        int finalPoint = point;
         executorService.submit(() -> {
           double[] centralGenotypeFitnessValues = getFitnessValues(problem, centralGenotype);
-          for (int n = 0; n < neighborsNumber; ++n) {
+          for (int n = 0; n < configuration.nNeighbors; ++n) {
             String line = "%s,%s,%d,%d,%d,%.2e,%d,"
                     .formatted(
                         problem.environment,
                         problem.builder,
-                        finalCenter,
+                        finalPoint,
                         n,
                         0,
-                        segmentLength,
+                        configuration.segmentLength,
                         genotypeLength)
                 + Arrays.stream(centralGenotypeFitnessValues)
                     .mapToObj(value -> String.format("%.5e", value))
@@ -343,11 +313,10 @@ public class LandscapeCharacterizer {
           }
         });
 
-        // For each neighbor, sample the corresponding segment and compute the fitness values for each sample
-        for (int neighbor = 0; neighbor < neighborsNumber; ++neighbor) {
-
-          // Extracts component with a Gaussian distribution to have a uniform distribution on the n-sphere
-          double[] randomVector = IntStream.range(0, genotypeLength)
+        for (int neighbor = 0; neighbor < configuration.nNeighbors; ++neighbor) {
+          double[] randomVector = IntStream.range(
+                  0, genotypeLength) // Extracts component with a Gaussian distribution to have
+              // uniformity on the sphere
               .mapToDouble(i -> genotypeBounds.min()
                   + random.nextGaussian() * (genotypeBounds.max() - genotypeBounds.min()))
               .toArray();
@@ -355,21 +324,16 @@ public class LandscapeCharacterizer {
               .boxed()
               .mapToDouble(element -> element * element)
               .sum());
-
-          // Normalize the random vector and compute the neighbor genotype
           double[] neighborGenotype = IntStream.range(0, genotypeLength)
-              .mapToDouble(
-                  i -> (randomVector[i] / randomVector_norm) * segmentLength + centralGenotype[i])
+              .mapToDouble(i -> (randomVector[i] / randomVector_norm) * configuration.segmentLength
+                  + centralGenotype[i])
               .toArray();
-
-          // Compute the sample step
           double[] sampleStep = IntStream.range(0, genotypeLength)
-              .mapToDouble(
-                  i -> (neighborGenotype[i] - centralGenotype[i]) / (configuration.samplesNumber - 1))
+              .mapToDouble(i -> (neighborGenotype[i] - centralGenotype[i]) / (configuration.nSamples - 1))
               .toArray();
 
           int finalNeighbor = neighbor;
-          for (int sample = 1; sample < configuration.samplesNumber; ++sample) {
+          for (int sample = 1; sample < configuration.nSamples; ++sample) {
             int finalSample = sample;
             executorService.submit(() -> {
               StringBuilder line = new StringBuilder();
@@ -377,10 +341,10 @@ public class LandscapeCharacterizer {
                   .formatted(
                       problem.environment,
                       problem.builder,
-                      finalCenter,
+                      finalPoint,
                       finalNeighbor,
                       finalSample,
-                      segmentLength,
+                      configuration.segmentLength,
                       genotypeLength));
               double[] sampleGenotype = Arrays.stream(sampleStep)
                   .boxed()
@@ -397,7 +361,6 @@ public class LandscapeCharacterizer {
         }
       }
     }
-
     executorService.shutdown();
     boolean terminated = false;
     while (!terminated) {
