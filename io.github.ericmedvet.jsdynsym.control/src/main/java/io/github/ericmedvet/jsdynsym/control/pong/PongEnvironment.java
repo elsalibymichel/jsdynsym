@@ -242,7 +242,7 @@ public class PongEnvironment implements HomogeneousBiEnvironment<double[], doubl
         new Point(-increasedBallVelocity.x(), increasedBallVelocity.y()),
         updatedBallStateRRF.nOfCollisions + 1
     );
-    double collisionAngle = bouncedBallState.position.diff(racketCollisionPoint).direction();
+    double collisionAngle = bouncedBallState.position.diff(collisionPointRRF).direction();
     double anglePercentageCorrection = DoubleRange.SYMMETRIC_UNIT.clip(
         racketAction / configuration.racketsMaxDeltaY
     ) * configuration.maxPercentageAngleAdjustment;
