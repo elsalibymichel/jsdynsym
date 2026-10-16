@@ -26,6 +26,7 @@ import io.github.ericmedvet.jnb.datastructure.FormattedNamedFunction;
 import io.github.ericmedvet.jsdynsym.control.HomogeneousBiAgentTask;
 import io.github.ericmedvet.jsdynsym.control.Simulation;
 import io.github.ericmedvet.jsdynsym.control.pong.PongEnvironment;
+import java.util.List;
 import java.util.function.Function;
 
 @Discoverable(prefixTemplate = "dynamicalSystem|dynSys|ds.environment|env|e.pong")
@@ -69,25 +70,31 @@ public class PongFunctions {
 
   @SuppressWarnings("unused")
   @Cacheable
-  public static <X> FormattedNamedFunction<X, Double> racketY1(
-      @Param(value = "of", dNPM = "f.identity()") Function<X, HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>> beforeF,
-      @Param(value = "format", dS = "%5.2f") String format
+  public static <X> FormattedNamedFunction<X, List<Double>> racketY1(
+      @Param(value = "of", dNPM = "f.identity()") Function<X, Simulation.Outcome<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>>> beforeF,
+      @Param(value = "format", dS = "%s") String format
   ) {
-    Function<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>, Double> f = s -> s.state()
-        .lRacketState()
-        .yCenter();
+    Function<Simulation.Outcome<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>>, List<Double>> f = o -> o
+        .snapshots()
+        .values()
+        .stream()
+        .map(s -> s.state().lRacketState().yCenter())
+        .toList();
     return FormattedNamedFunction.from(f, format, "racket.y.1").compose(beforeF);
   }
 
   @SuppressWarnings("unused")
   @Cacheable
-  public static <X> FormattedNamedFunction<X, Double> racketY2(
-      @Param(value = "of", dNPM = "f.identity()") Function<X, HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>> beforeF,
-      @Param(value = "format", dS = "%5.2f") String format
+  public static <X> FormattedNamedFunction<X, List<Double>> racketY2(
+      @Param(value = "of", dNPM = "f.identity()") Function<X, Simulation.Outcome<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>>> beforeF,
+      @Param(value = "format", dS = "%s") String format
   ) {
-    Function<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>, Double> f = s -> s.state()
-        .rRacketState()
-        .yCenter();
+    Function<Simulation.Outcome<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>>, List<Double>> f = o -> o
+        .snapshots()
+        .values()
+        .stream()
+        .map(s -> s.state().rRacketState().yCenter())
+        .toList();
     return FormattedNamedFunction.from(f, format, "racket.y.2").compose(beforeF);
   }
 
