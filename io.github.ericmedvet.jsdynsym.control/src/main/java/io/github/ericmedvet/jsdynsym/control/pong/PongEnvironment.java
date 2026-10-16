@@ -58,8 +58,42 @@ public class PongEnvironment implements HomogeneousBiEnvironment<double[], doubl
       double arenaXLength,
       double arenaYLength,
       double precision,
-      RandomGenerator randomGenerator
+      RandomGenerator randomGenerator,
+      DoubleRange ballInitialXRange,
+      DoubleRange ballInitialYRange
   ) {
+    public Configuration(
+        DoubleRange racketsInitialYRange,
+        double racketsLength,
+        double racketsMaxDeltaY,
+        double ballInitialVelocity,
+        double ballMaxVelocity,
+        DoubleRange ballInitialAngleRange,
+        double ballAccelerationRate,
+        double maxPercentageAngleAdjustment,
+        double arenaXLength,
+        double arenaYLength,
+        double precision,
+        RandomGenerator randomGenerator
+    ) {
+      this(
+          racketsInitialYRange,
+          racketsLength,
+          racketsMaxDeltaY,
+          ballInitialVelocity,
+          ballMaxVelocity,
+          ballInitialAngleRange,
+          ballAccelerationRate,
+          maxPercentageAngleAdjustment,
+          arenaXLength,
+          arenaYLength,
+          precision,
+          randomGenerator,
+          new DoubleRange(0.5, 0.5),
+          new DoubleRange(0.5, 0.5)
+      );
+    }
+
     public static final Configuration DEFAULT = new Configuration(
         new DoubleRange(22, 28),
         5,
@@ -176,12 +210,20 @@ public class PongEnvironment implements HomogeneousBiEnvironment<double[], doubl
             Side.RIGHT
         ),
         new BallState(
-            new Point(configuration.arenaXLength / 2.0, configuration.arenaYLength / 2.0),
+            new Point(
+                configuration.arenaXLength * initialFraction(configuration.ballInitialXRange),
+                configuration.arenaYLength * initialFraction(configuration.ballInitialYRange)
+            ),
             randomBallVelocity(),
             0
         )
     );
     previousTime = 0.0;
+  }
+
+  // a range with min == max is a fixed fraction of the arena and does not use the random generator
+  private double initialFraction(DoubleRange range) {
+    return range.min() == range.max() ? range.min() : range.denormalize(configuration.randomGenerator.nextDouble());
   }
 
   private ArenaObject getClosestCollidingArenaObject(

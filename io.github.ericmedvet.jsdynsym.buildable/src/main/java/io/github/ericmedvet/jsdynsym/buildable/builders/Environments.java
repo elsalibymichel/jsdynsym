@@ -53,7 +53,9 @@ public class Environments {
       @Param(value = "arenaXLength", dD = 60.0) double arenaXLength,
       @Param(value = "arenaYLength", dD = 50.0) double arenaYLength,
       @Param(value = "precision", dD = 1e-5) double precision,
-      @Param(value = "randomGenerator", dNPM = "m.defaultRG()") RandomGenerator randomGenerator
+      @Param(value = "randomGenerator", dNPM = "m.defaultRG()") RandomGenerator randomGenerator,
+      @Param(value = "ballInitialXRange", dNPM = "m.range(min=0.5;max=0.5)") DoubleRange ballInitialXRange,
+      @Param(value = "ballInitialYRange", dNPM = "m.range(min=0.5;max=0.5)") DoubleRange ballInitialYRange
   ) {
     return new PongEnvironment(
         new PongEnvironment.Configuration(
@@ -68,7 +70,9 @@ public class Environments {
             arenaXLength,
             arenaYLength,
             precision,
-            randomGenerator
+            randomGenerator,
+            ballInitialXRange,
+            ballInitialYRange
         )
     );
   }

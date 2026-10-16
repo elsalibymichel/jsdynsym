@@ -69,6 +69,30 @@ public class PongFunctions {
 
   @SuppressWarnings("unused")
   @Cacheable
+  public static <X> FormattedNamedFunction<X, Double> racketY1(
+      @Param(value = "of", dNPM = "f.identity()") Function<X, HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>> beforeF,
+      @Param(value = "format", dS = "%5.2f") String format
+  ) {
+    Function<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>, Double> f = s -> s.state()
+        .lRacketState()
+        .yCenter();
+    return FormattedNamedFunction.from(f, format, "racket.y.1").compose(beforeF);
+  }
+
+  @SuppressWarnings("unused")
+  @Cacheable
+  public static <X> FormattedNamedFunction<X, Double> racketY2(
+      @Param(value = "of", dNPM = "f.identity()") Function<X, HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>> beforeF,
+      @Param(value = "format", dS = "%5.2f") String format
+  ) {
+    Function<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>, Double> f = s -> s.state()
+        .rRacketState()
+        .yCenter();
+    return FormattedNamedFunction.from(f, format, "racket.y.2").compose(beforeF);
+  }
+
+  @SuppressWarnings("unused")
+  @Cacheable
   public static <X> FormattedNamedFunction<X, Double> score1(
       @Param(value = "of", dNPM = "f.identity()") Function<X, Simulation.Outcome<HomogeneousBiAgentTask.Step<double[], double[], PongEnvironment.State>>> beforeF,
       @Param(value = "format", dS = "%5.3f") String format
